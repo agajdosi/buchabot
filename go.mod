@@ -1,4 +1,4 @@
-module github.com/agajdosi/bucharest
+module github.com/agajdosi/buchabot
 
 go 1.14
 
