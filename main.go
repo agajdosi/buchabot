@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/agajdosi/buchabot/unslave"
 	"github.com/google/go-github/v32/github"
 	"golang.org/x/oauth2"
 )
@@ -66,7 +67,7 @@ func searchRepos(ctx context.Context, client *github.Client, opts *github.Search
 func handleAPILimit(response *github.Response) {
 	if response.Rate.Remaining < 5 {
 		fmt.Println("SLEEEEPING")
-		length := time.Until(response.Rate.Reset.Time) + time.Duration(5*time.Second)
+		length := time.Until(response.Rate.Reset.Time) + time.Duration(time.Second*5)
 		time.Sleep(length)
 	}
 	return
@@ -78,12 +79,26 @@ func fixRepository(ctx context.Context, repository *github.Repository, client *g
 		return nil
 	}
 
-	//here do the fix
-	//maybe call a different module
+	_, err := forkRepo(ctx, repository, client)
+	if err != nil {
+		return err
+	}
 
-	//unslave.Unslave()
+	unslave.Unslave()
 
 	return nil
+}
+
+func forkRepo(ctx context.Context, repository *github.Repository, client *github.Client) (*github.Repository, error) {
+	opts := &github.RepositoryCreateForkOptions{}
+	owner := *repository.Owner.Login
+	name := repository.GetName()
+
+	repo, resp, err := client.Repositories.CreateFork(ctx, owner, name, opts)
+	handleAPILimit(resp)
+	time.Sleep(time.Duration(time.Second * 10)) // it takes few seconds to GH to fork the repo
+
+	return repo, err
 }
 
 func fixExists(ctx context.Context, repository *github.Repository, client *github.Client) bool {

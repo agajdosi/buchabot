@@ -4,7 +4,9 @@ import (
 	"fmt"
 )
 
-func Unslave() {
+//Unslave removes all the mentions of master-slave terminology from the repository
+//and replaces them with less disgusting terms.
+func Unslave() error {
 	fmt.Println("unslaving")
-	return
+	return nil
 }
