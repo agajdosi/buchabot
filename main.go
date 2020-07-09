@@ -10,6 +10,7 @@ import (
 	"github.com/agajdosi/buchabot/unslave"
 
 	"github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/config"
 	"github.com/google/go-github/v32/github"
 	"golang.org/x/oauth2"
 )
@@ -81,9 +82,16 @@ func fixRepository(ctx context.Context, repository *github.Repository, client *g
 
 	forkedRepo, _ := forkRepo(ctx, repository, client)
 
-	err := cloneRepo(forkedRepo)
+	gitRepo, err := cloneRepo(forkedRepo)
 	if err != nil {
+		fmt.Println(err)
 		return err
+	}
+
+	err = createBranch(gitRepo, "unslave")
+	if err != nil {
+		fmt.Println(err)
+		return nil
 	}
 
 	unslave.Unslave()
@@ -119,17 +127,29 @@ func forkRepo(ctx context.Context, repository *github.Repository, client *github
 	return repo, err
 }
 
-func cloneRepo(repository *github.Repository) error {
+func cloneRepo(repository *github.Repository) (*git.Repository, error) {
 	err := os.RemoveAll(".temp")
 	if err != nil {
 		fmt.Println("error deleting temp directory:", err)
 	}
 
-	_, err = git.PlainClone(".temp", false, &git.CloneOptions{
+	gitRepo, err := git.PlainClone(".temp", false, &git.CloneOptions{
 		URL:      *repository.CloneURL,
 		Progress: os.Stdout,
 	})
 
 	fmt.Println("repository cloned")
+	return gitRepo, err
+}
+
+func createBranch(gitRepo *git.Repository, name string) error {
+	opts := &config.Branch{
+		Name: name,
+	}
+	err := gitRepo.CreateBranch(opts)
+	if err != nil {
+		fmt.Println(err)
+	}
+
 	return err
 }
