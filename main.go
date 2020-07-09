@@ -4,15 +4,12 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"os"
-	"path/filepath"
 	"time"
 
 	"github.com/agajdosi/buchabot/unslave"
 
 	"github.com/go-git/go-git/v5"
-	"github.com/go-git/go-git/v5/config"
 	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/go-git/go-git/v5/plumbing/transport/http"
 	"github.com/google/go-github/v32/github"
@@ -92,14 +89,6 @@ func fixRepository(ctx context.Context, repository *github.Repository, client *g
 		return err
 	}
 
-	err = createBranch(gitRepo)
-	if err != nil {
-		fmt.Println(err)
-		return nil
-	}
-
-	unslave.Unslave()
-
 	err = commitChanges(gitRepo)
 	if err != nil {
 		fmt.Println(err)
@@ -156,19 +145,6 @@ func cloneRepo(repository *github.Repository) (*git.Repository, error) {
 	return gitRepo, err
 }
 
-func createBranch(gitRepo *git.Repository) error {
-	opts := &config.Branch{
-		Name: "slav-removal",
-	}
-	err := gitRepo.CreateBranch(opts)
-	if err != nil {
-		fmt.Println(err)
-	}
-
-	fmt.Println(" > branch created")
-	return err
-}
-
 func commitChanges(gitRepo *git.Repository) error {
 	workTree, err := gitRepo.Worktree()
 	if err != nil {
@@ -185,8 +161,7 @@ func commitChanges(gitRepo *git.Repository) error {
 		fmt.Println("checkout error: ", err)
 	}
 
-	filename := filepath.Join(".temp", "test-git-file")
-	ioutil.WriteFile(filename, []byte("hello world!"), 0644)
+	unslave.Unslave()
 
 	workTree.AddGlob(".")
 	status, _ := workTree.Status()
@@ -194,8 +169,8 @@ func commitChanges(gitRepo *git.Repository) error {
 
 	commit, _ := workTree.Commit("example go-git commit", &git.CommitOptions{
 		Author: &object.Signature{
-			Name:  "John Doe",
-			Email: "john@doe.org",
+			Name:  "Bogdan Popescu",
+			Email: "bogdanfuturepopescu@gmail.com",
 			When:  time.Now(),
 		},
 	})
