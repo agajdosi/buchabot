@@ -4,8 +4,8 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"time"
 
-	"github.com/agajdosi/buchabot/unslave"
 	"github.com/google/go-github/v32/github"
 	"golang.org/x/oauth2"
 )
@@ -19,33 +19,20 @@ func main() {
 		&oauth2.Token{AccessToken: *token},
 	)
 	tc := oauth2.NewClient(ctx, ts)
-
 	client := github.NewClient(tc)
 
-	searchRepos(ctx, client)
+	searchAllRepos(ctx, client)
 }
 
-func searchRepos(ctx context.Context, client *github.Client) error {
+func searchAllRepos(ctx context.Context, client *github.Client) {
 	opts := &github.SearchOptions{
-		ListOptions: github.ListOptions{PerPage: 100},
+		ListOptions: github.ListOptions{PerPage: 10},
 	}
 
 	for {
-		//TODO: slowly search hour by hour to really get aaaaaall the results
-		//results, resp, err := client.Search.Code(ctx, "master created:2020-07-07T12", opts)
-		// OR BY SIZE!!!!
-		//results, resp, err := client.Search.Code(ctx, "master size:2000..3000", opts)
-
-		results, resp, err := client.Search.Code(ctx, "unhuman resources", opts)
-
-		fmt.Println(*results.Total, *resp, err)
-
+		resp, err := searchRepos(ctx, client, opts)
 		if err != nil {
-			return err
-		}
-
-		for _, result := range results.CodeResults {
-			fixRepository(ctx, result.Repository, client)
+			fmt.Println(err)
 		}
 
 		if resp.NextPage == 0 {
@@ -54,23 +41,35 @@ func searchRepos(ctx context.Context, client *github.Client) error {
 
 		opts.Page = resp.NextPage
 	}
-
-	return nil
 }
 
-func fixExists(ctx context.Context, repository *github.Repository, client *github.Client) bool {
-	opts := &github.SearchOptions{
-		ListOptions: github.ListOptions{PerPage: 100},
+func searchRepos(ctx context.Context, client *github.Client, opts *github.SearchOptions) (*github.Response, error) {
+	//TODO: slowly search hour by hour to really get aaaaaall the results
+	//results, resp, err := client.Search.Code(ctx, "master created:2020-07-07T12", opts)
+	// OR BY SIZE!!!!
+	//results, resp, err := client.Search.Code(ctx, "master size:2000..3000", opts)
+	results, resp, err := client.Search.Code(ctx, "slave", opts)
+	handleAPILimit(resp)
+	if err != nil {
+		return resp, err
 	}
 
-	search := fmt.Sprintf("repo:%s author:%s", *repository.FullName, "agajdosi")
-	results, _, _ := client.Search.Issues(ctx, search, opts)
+	fmt.Println(*results.Total, *resp, err)
 
-	if len(results.Issues) == 0 {
-		return false
+	for _, result := range results.CodeResults {
+		fixRepository(ctx, result.Repository, client)
 	}
 
-	return true
+	return resp, nil
+}
+
+func handleAPILimit(response *github.Response) {
+	if response.Rate.Remaining < 5 {
+		fmt.Println("SLEEEEPING")
+		length := time.Until(response.Rate.Reset.Time) + time.Duration(5*time.Second)
+		time.Sleep(length)
+	}
+	return
 }
 
 func fixRepository(ctx context.Context, repository *github.Repository, client *github.Client) error {
@@ -82,7 +81,24 @@ func fixRepository(ctx context.Context, repository *github.Repository, client *g
 	//here do the fix
 	//maybe call a different module
 
-	unslave.Unslave()
+	//unslave.Unslave()
 
 	return nil
+}
+
+func fixExists(ctx context.Context, repository *github.Repository, client *github.Client) bool {
+	opts := &github.SearchOptions{
+		ListOptions: github.ListOptions{PerPage: 100},
+	}
+
+	search := fmt.Sprintf("repo:%s author:%s", *repository.FullName, "agajdosi")
+	results, resp, err := client.Search.Issues(ctx, search, opts)
+	handleAPILimit(resp)
+	fmt.Println(*results.Total, *resp, err)
+
+	if len(results.Issues) == 0 {
+		return false
+	}
+
+	return true
 }
