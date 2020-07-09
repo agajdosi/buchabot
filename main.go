@@ -91,6 +91,22 @@ func fixRepository(ctx context.Context, repository *github.Repository, client *g
 	return nil
 }
 
+func fixExists(ctx context.Context, repository *github.Repository, client *github.Client) bool {
+	opts := &github.SearchOptions{
+		ListOptions: github.ListOptions{PerPage: 100},
+	}
+
+	search := fmt.Sprintf("repo:%s author:%s", *repository.FullName, "bopopescu")
+	results, resp, _ := client.Search.Issues(ctx, search, opts)
+	handleAPILimit(resp)
+
+	if len(results.Issues) == 0 {
+		return false
+	}
+
+	return true
+}
+
 func forkRepo(ctx context.Context, repository *github.Repository, client *github.Client) (*github.Repository, error) {
 	opts := &github.RepositoryCreateForkOptions{}
 	owner := *repository.Owner.Login
@@ -116,20 +132,4 @@ func cloneRepo(repository *github.Repository) error {
 
 	fmt.Println("repository cloned")
 	return err
-}
-
-func fixExists(ctx context.Context, repository *github.Repository, client *github.Client) bool {
-	opts := &github.SearchOptions{
-		ListOptions: github.ListOptions{PerPage: 100},
-	}
-
-	search := fmt.Sprintf("repo:%s author:%s", *repository.FullName, "bopopescu")
-	results, resp, _ := client.Search.Issues(ctx, search, opts)
-	handleAPILimit(resp)
-
-	if len(results.Issues) == 0 {
-		return false
-	}
-
-	return true
 }
