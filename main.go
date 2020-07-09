@@ -106,7 +106,7 @@ func fixExists(ctx context.Context, repository *github.Repository, client *githu
 		ListOptions: github.ListOptions{PerPage: 100},
 	}
 
-	search := fmt.Sprintf("repo:%s author:%s", *repository.FullName, "agajdosi")
+	search := fmt.Sprintf("repo:%s author:%s", *repository.FullName, "bopopescu")
 	results, resp, err := client.Search.Issues(ctx, search, opts)
 	handleAPILimit(resp)
 	fmt.Println(*results.Total, *resp, err)
