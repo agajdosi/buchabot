@@ -4,13 +4,17 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io/ioutil"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/agajdosi/buchabot/unslave"
 
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/config"
+	"github.com/go-git/go-git/v5/plumbing/object"
+	"github.com/go-git/go-git/v5/plumbing/transport/http"
 	"github.com/google/go-github/v32/github"
 	"golang.org/x/oauth2"
 )
@@ -26,16 +30,16 @@ func main() {
 	tc := oauth2.NewClient(ctx, ts)
 	client := github.NewClient(tc)
 
-	searchAllRepos(ctx, client)
+	searchAllRepos(ctx, client, token)
 }
 
-func searchAllRepos(ctx context.Context, client *github.Client) {
+func searchAllRepos(ctx context.Context, client *github.Client, token *string) {
 	opts := &github.SearchOptions{
 		ListOptions: github.ListOptions{PerPage: 10},
 	}
 
 	for {
-		resp, err := searchRepos(ctx, client, opts)
+		resp, err := searchRepos(ctx, client, opts, token)
 		if err != nil {
 			fmt.Println(err)
 		}
@@ -48,7 +52,7 @@ func searchAllRepos(ctx context.Context, client *github.Client) {
 	}
 }
 
-func searchRepos(ctx context.Context, client *github.Client, opts *github.SearchOptions) (*github.Response, error) {
+func searchRepos(ctx context.Context, client *github.Client, opts *github.SearchOptions, token *string) (*github.Response, error) {
 	//TODO: slowly search hour by hour to really get aaaaaall the results
 	//results, resp, err := client.Search.Code(ctx, "master created:2020-07-07T12", opts)
 	// OR BY SIZE!!!!
@@ -60,7 +64,7 @@ func searchRepos(ctx context.Context, client *github.Client, opts *github.Search
 	}
 
 	for _, result := range results.CodeResults {
-		fixRepository(ctx, result.Repository, client)
+		fixRepository(ctx, result.Repository, client, token)
 	}
 
 	return resp, nil
@@ -74,7 +78,7 @@ func handleAPILimit(response *github.Response) {
 	return
 }
 
-func fixRepository(ctx context.Context, repository *github.Repository, client *github.Client) error {
+func fixRepository(ctx context.Context, repository *github.Repository, client *github.Client, token *string) error {
 	fmt.Printf("\n" + *repository.FullName + "\n")
 	if fixExists(ctx, repository, client) {
 		return nil
@@ -88,13 +92,23 @@ func fixRepository(ctx context.Context, repository *github.Repository, client *g
 		return err
 	}
 
-	err = createBranch(gitRepo, "unslave")
+	err = createBranch(gitRepo)
 	if err != nil {
 		fmt.Println(err)
 		return nil
 	}
 
 	unslave.Unslave()
+
+	err = commitChanges(gitRepo)
+	if err != nil {
+		fmt.Println(err)
+	}
+
+	err = pushChanges(gitRepo, token)
+	if err != nil {
+		fmt.Println(err)
+	}
 
 	return nil
 }
@@ -138,15 +152,68 @@ func cloneRepo(repository *github.Repository) (*git.Repository, error) {
 		Progress: os.Stdout,
 	})
 
-	fmt.Println("repository cloned")
+	fmt.Println(" > repository cloned")
 	return gitRepo, err
 }
 
-func createBranch(gitRepo *git.Repository, name string) error {
+func createBranch(gitRepo *git.Repository) error {
 	opts := &config.Branch{
-		Name: name,
+		Name: "slav-removal",
 	}
 	err := gitRepo.CreateBranch(opts)
+	if err != nil {
+		fmt.Println(err)
+	}
+
+	fmt.Println(" > branch created")
+	return err
+}
+
+func commitChanges(gitRepo *git.Repository) error {
+	workTree, err := gitRepo.Worktree()
+	if err != nil {
+		fmt.Println(err)
+	}
+
+	opts := &git.CheckoutOptions{
+		Branch: "refs/heads/dadaism",
+		Create: true,
+	}
+
+	err = workTree.Checkout(opts)
+	if err != nil {
+		fmt.Println("checkout error: ", err)
+	}
+
+	filename := filepath.Join(".temp", "test-git-file")
+	ioutil.WriteFile(filename, []byte("hello world!"), 0644)
+
+	workTree.AddGlob(".")
+	status, _ := workTree.Status()
+	fmt.Println(status)
+
+	commit, _ := workTree.Commit("example go-git commit", &git.CommitOptions{
+		Author: &object.Signature{
+			Name:  "John Doe",
+			Email: "john@doe.org",
+			When:  time.Now(),
+		},
+	})
+
+	obj, _ := gitRepo.CommitObject(commit)
+	fmt.Println(obj)
+
+	return nil
+}
+
+func pushChanges(gitRepo *git.Repository, token *string) error {
+	opts := &git.PushOptions{
+		Auth: &http.BasicAuth{
+			Username: " ",
+			Password: *token,
+		},
+	}
+	err := gitRepo.Push(opts)
 	if err != nil {
 		fmt.Println(err)
 	}
