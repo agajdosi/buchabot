@@ -4,9 +4,12 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/agajdosi/buchabot/unslave"
+
+	"github.com/go-git/go-git/v5"
 	"github.com/google/go-github/v32/github"
 	"golang.org/x/oauth2"
 )
@@ -55,8 +58,6 @@ func searchRepos(ctx context.Context, client *github.Client, opts *github.Search
 		return resp, err
 	}
 
-	fmt.Println(*results.Total, *resp, err)
-
 	for _, result := range results.CodeResults {
 		fixRepository(ctx, result.Repository, client)
 	}
@@ -66,7 +67,6 @@ func searchRepos(ctx context.Context, client *github.Client, opts *github.Search
 
 func handleAPILimit(response *github.Response) {
 	if response.Rate.Remaining < 5 {
-		fmt.Println("SLEEEEPING")
 		length := time.Until(response.Rate.Reset.Time) + time.Duration(time.Second*5)
 		time.Sleep(length)
 	}
@@ -74,12 +74,14 @@ func handleAPILimit(response *github.Response) {
 }
 
 func fixRepository(ctx context.Context, repository *github.Repository, client *github.Client) error {
-	fmt.Println("repository:", *repository.FullName)
+	fmt.Printf("\n" + *repository.FullName + "\n")
 	if fixExists(ctx, repository, client) {
 		return nil
 	}
 
-	_, err := forkRepo(ctx, repository, client)
+	forkedRepo, _ := forkRepo(ctx, repository, client)
+
+	err := cloneRepo(forkedRepo)
 	if err != nil {
 		return err
 	}
@@ -101,15 +103,29 @@ func forkRepo(ctx context.Context, repository *github.Repository, client *github
 	return repo, err
 }
 
+func cloneRepo(repository *github.Repository) error {
+	err := os.RemoveAll(".temp")
+	if err != nil {
+		fmt.Println("error deleting temp directory:", err)
+	}
+
+	_, err = git.PlainClone(".temp", false, &git.CloneOptions{
+		URL:      *repository.CloneURL,
+		Progress: os.Stdout,
+	})
+
+	fmt.Println("repository cloned")
+	return err
+}
+
 func fixExists(ctx context.Context, repository *github.Repository, client *github.Client) bool {
 	opts := &github.SearchOptions{
 		ListOptions: github.ListOptions{PerPage: 100},
 	}
 
 	search := fmt.Sprintf("repo:%s author:%s", *repository.FullName, "bopopescu")
-	results, resp, err := client.Search.Issues(ctx, search, opts)
+	results, resp, _ := client.Search.Issues(ctx, search, opts)
 	handleAPILimit(resp)
-	fmt.Println(*results.Total, *resp, err)
 
 	if len(results.Issues) == 0 {
 		return false
