@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/agajdosi/buchabot/unslave"
-
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/go-git/go-git/v5/plumbing/transport/http"
@@ -83,21 +82,18 @@ func fixRepository(ctx context.Context, repository *github.Repository, client *g
 
 	forkedRepo, _ := forkRepo(ctx, repository, client)
 
-	gitRepo, err := cloneRepo(forkedRepo)
+	gitRepo, workTree, err := cloneRepo(forkedRepo)
 	if err != nil {
 		fmt.Println(err)
 		return err
 	}
 
-	err = commitChanges(gitRepo)
-	if err != nil {
-		fmt.Println(err)
-	}
+	checkoutBranch(gitRepo, workTree)
 
-	err = pushChanges(gitRepo, token)
-	if err != nil {
-		fmt.Println(err)
-	}
+	unslave.Unslave()
+
+	commitChanges(gitRepo, workTree)
+	pushChanges(gitRepo, token)
 
 	return nil
 }
@@ -130,7 +126,7 @@ func forkRepo(ctx context.Context, repository *github.Repository, client *github
 	return repo, err
 }
 
-func cloneRepo(repository *github.Repository) (*git.Repository, error) {
+func cloneRepo(repository *github.Repository) (*git.Repository, *git.Worktree, error) {
 	err := os.RemoveAll(".temp")
 	if err != nil {
 		fmt.Println("error deleting temp directory:", err)
@@ -141,33 +137,32 @@ func cloneRepo(repository *github.Repository) (*git.Repository, error) {
 		Progress: os.Stdout,
 	})
 
-	fmt.Println(" > repository cloned")
-	return gitRepo, err
-}
-
-func commitChanges(gitRepo *git.Repository) error {
 	workTree, err := gitRepo.Worktree()
 	if err != nil {
 		fmt.Println(err)
 	}
 
+	fmt.Println(" > repository cloned")
+	return gitRepo, workTree, err
+}
+
+func checkoutBranch(gitRepo *git.Repository, workTree *git.Worktree) error {
 	opts := &git.CheckoutOptions{
-		Branch: "refs/heads/dadaism",
+		Branch: "refs/heads/bucharest",
 		Create: true,
 	}
-
-	err = workTree.Checkout(opts)
+	err := workTree.Checkout(opts)
 	if err != nil {
 		fmt.Println("checkout error: ", err)
 	}
 
-	unslave.Unslave()
+	return err
+}
 
+func commitChanges(gitRepo *git.Repository, workTree *git.Worktree) error {
 	workTree.AddGlob(".")
-	status, _ := workTree.Status()
-	fmt.Println(status)
-
-	commit, _ := workTree.Commit("example go-git commit", &git.CommitOptions{
+	//should go to log: status, _ := workTree.Status()
+	commit, err := workTree.Commit("example go-git commit", &git.CommitOptions{
 		Author: &object.Signature{
 			Name:  "Bogdan Popescu",
 			Email: "bogdanfuturepopescu@gmail.com",
@@ -175,10 +170,12 @@ func commitChanges(gitRepo *git.Repository) error {
 		},
 	})
 
-	obj, _ := gitRepo.CommitObject(commit)
-	fmt.Println(obj)
+	_, err = gitRepo.CommitObject(commit)
+	if err != nil {
+		fmt.Println(err)
+	}
 
-	return nil
+	return err
 }
 
 func pushChanges(gitRepo *git.Repository, token *string) error {
