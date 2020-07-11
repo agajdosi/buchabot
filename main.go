@@ -17,8 +17,13 @@ import (
 )
 
 func main() {
-	token := flag.String("token", "", "GitHub Token which will be used to search code and place fixing commits.")
+	token := flag.String("token", "", "GitHub Token which will be used to search code, fork repositories, place fixing commits and create PRs to original repositories.")
 	flag.Parse()
+
+	if *token == "" {
+		fmt.Println("Token flag is required.")
+		os.Exit(100)
+	}
 
 	ctx := context.Background()
 	ts := oauth2.StaticTokenSource(
