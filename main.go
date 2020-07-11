@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/agajdosi/buchabot/unslave"
@@ -106,7 +107,7 @@ func handleAPILimit(response *github.Response) {
 }
 
 func fixRepository(ctx context.Context, repository *github.Repository, client *github.Client, token *string) error {
-	fmt.Printf("\n" + *repository.FullName + "\n")
+	fmt.Printf("\n" + *repository.FullName)
 	if fixExists(ctx, repository, client) {
 		return nil
 	}
@@ -120,31 +121,28 @@ func fixRepository(ctx context.Context, repository *github.Repository, client *g
 	}
 
 	checkoutBranch(gitRepo, workTree)
-
 	unslave.Unslave()
-
 	commitChanges(gitRepo, workTree)
 	pushChanges(gitRepo, token)
-
 	createPR(ctx, client, repository, fork, gitRepo, token)
 
 	return nil
 }
 
 func fixExists(ctx context.Context, repository *github.Repository, client *github.Client) bool {
-	opts := &github.SearchOptions{
-		ListOptions: github.ListOptions{PerPage: 100},
+	opts := &github.PullRequestListOptions{
+		State: "all",
 	}
-
-	search := fmt.Sprintf("repo:%s author:%s", *repository.FullName, "bopopescu")
-	results, resp, _ := client.Search.Issues(ctx, search, opts)
+	pullRequests, resp, _ := client.PullRequests.List(ctx, *repository.Owner.Login, *repository.Name, opts)
 	handleAPILimit(resp)
 
-	if len(results.Issues) == 0 {
-		return false
+	for _, pullRequest := range pullRequests {
+		if strings.Contains(*pullRequest.Body, "removes master slave terminology") {
+			return true
+		}
 	}
 
-	return true
+	return false
 }
 
 func forkRepo(ctx context.Context, repository *github.Repository, client *github.Client) (*github.Repository, error) {
