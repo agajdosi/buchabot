@@ -66,6 +66,37 @@ func searchRepos(ctx context.Context, client *github.Client, opts *github.Search
 	return resp, nil
 }
 
+func createPR(ctx context.Context, client *github.Client, repository *github.Repository, fork *github.Repository, gitRepo *git.Repository, token *string) error {
+	title := "Small update"
+	description := "please consider following changes"
+
+	gitHead, err := gitRepo.Head()
+	head := *fork.GetOwner().Login + ":" + gitHead.Name().Short()
+
+	base := repository.GetDefaultBranch()
+	if base == "" {
+		base = "master"
+	}
+
+	newPR := &github.NewPullRequest{
+		Title:               &title,
+		Head:                &head,
+		Base:                &base,
+		Body:                &description,
+		MaintainerCanModify: github.Bool(true),
+	}
+
+	_, resp, err := client.PullRequests.Create(ctx, *repository.Owner.Login, repository.GetName(), newPR)
+	if err != nil {
+		fmt.Println(err)
+	} else {
+		fmt.Println(" > PR successfully created")
+	}
+
+	handleAPILimit(resp)
+	return nil
+}
+
 func handleAPILimit(response *github.Response) {
 	if response.Rate.Remaining < 5 {
 		length := time.Until(response.Rate.Reset.Time) + time.Duration(time.Second*5)
@@ -80,9 +111,9 @@ func fixRepository(ctx context.Context, repository *github.Repository, client *g
 		return nil
 	}
 
-	forkedRepo, _ := forkRepo(ctx, repository, client)
+	fork, _ := forkRepo(ctx, repository, client)
 
-	gitRepo, workTree, err := cloneRepo(forkedRepo)
+	gitRepo, workTree, err := cloneRepo(fork)
 	if err != nil {
 		fmt.Println(err)
 		return err
@@ -94,6 +125,8 @@ func fixRepository(ctx context.Context, repository *github.Repository, client *g
 
 	commitChanges(gitRepo, workTree)
 	pushChanges(gitRepo, token)
+
+	createPR(ctx, client, repository, fork, gitRepo, token)
 
 	return nil
 }
