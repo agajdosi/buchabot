@@ -18,6 +18,7 @@ import (
 
 func main() {
 	token := flag.String("token", "", "GitHub Token which will be used to search code, fork repositories, place fixing commits and create PRs to original repositories.")
+	email := flag.String("email", "", "Sets email which will be used in the commits. Please set this if your email is not publicly visible and token does not have access to email:list on GitHub.")
 	flag.Parse()
 
 	if *token == "" {
@@ -32,16 +33,47 @@ func main() {
 	tc := oauth2.NewClient(ctx, ts)
 	client := github.NewClient(tc)
 
-	searchAllRepos(ctx, client, token)
+	user, _ := getUser(ctx, client, email)
+	fmt.Println("email:", *user.Email)
+
+	searchAllRepos(ctx, client, user, token)
 }
 
-func searchAllRepos(ctx context.Context, client *github.Client, token *string) {
+func getUser(ctx context.Context, client *github.Client, email *string) (*github.User, error) {
+	user, resp, err := client.Users.Get(ctx, "")
+	handleAPILimit(resp)
+	if err != nil {
+		fmt.Println(err)
+	}
+
+	if *email != "" {
+		user.Email = email
+		return user, err
+	}
+
+	if user.GetEmail() != "" {
+		return user, err
+	}
+
+	emails, resp, err := client.Users.ListEmails(ctx, &github.ListOptions{})
+	handleAPILimit(resp)
+	if err != nil {
+		fmt.Println(err)
+	}
+
+	e := emails[0].GetEmail()
+	user.Email = &e
+
+	return user, err
+}
+
+func searchAllRepos(ctx context.Context, client *github.Client, user *github.User, token *string) {
 	opts := &github.SearchOptions{
 		ListOptions: github.ListOptions{PerPage: 10},
 	}
 
 	for {
-		resp, err := searchRepos(ctx, client, opts, token)
+		resp, err := searchRepos(ctx, client, opts, user, token)
 		if err != nil {
 			fmt.Println(err)
 		}
@@ -54,7 +86,7 @@ func searchAllRepos(ctx context.Context, client *github.Client, token *string) {
 	}
 }
 
-func searchRepos(ctx context.Context, client *github.Client, opts *github.SearchOptions, token *string) (*github.Response, error) {
+func searchRepos(ctx context.Context, client *github.Client, opts *github.SearchOptions, user *github.User, token *string) (*github.Response, error) {
 	//TODO: slowly search hour by hour to really get aaaaaall the results
 	//results, resp, err := client.Search.Code(ctx, "master created:2020-07-07T12", opts)
 	// OR BY SIZE!!!!
@@ -66,7 +98,7 @@ func searchRepos(ctx context.Context, client *github.Client, opts *github.Search
 	}
 
 	for _, result := range results.CodeResults {
-		fixRepository(ctx, result.Repository, client, token)
+		fixRepository(ctx, result.Repository, client, user, token)
 	}
 
 	return resp, nil
@@ -111,7 +143,7 @@ func handleAPILimit(response *github.Response) {
 	return
 }
 
-func fixRepository(ctx context.Context, repository *github.Repository, client *github.Client, token *string) error {
+func fixRepository(ctx context.Context, repository *github.Repository, client *github.Client, user *github.User, token *string) error {
 	fmt.Printf("\n" + *repository.FullName)
 	if fixExists(ctx, repository, client) {
 		return nil
@@ -127,7 +159,7 @@ func fixRepository(ctx context.Context, repository *github.Repository, client *g
 
 	checkoutBranch(gitRepo, workTree)
 	unslave.Unslave()
-	commitChanges(gitRepo, workTree)
+	commitChanges(gitRepo, workTree, user)
 	pushChanges(gitRepo, token)
 	createPR(ctx, client, repository, fork, gitRepo, token)
 
@@ -195,13 +227,13 @@ func checkoutBranch(gitRepo *git.Repository, workTree *git.Worktree) error {
 	return err
 }
 
-func commitChanges(gitRepo *git.Repository, workTree *git.Worktree) error {
+func commitChanges(gitRepo *git.Repository, workTree *git.Worktree, user *github.User) error {
 	workTree.AddGlob(".")
 	//should go to log: status, _ := workTree.Status()
 	commit, err := workTree.Commit("example go-git commit", &git.CommitOptions{
 		Author: &object.Signature{
-			Name:  "Bogdan Popescu",
-			Email: "bogdanfuturepopescu@gmail.com",
+			Name:  user.GetName(),
+			Email: user.GetEmail(),
 			When:  time.Now(),
 		},
 	})
