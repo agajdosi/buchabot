@@ -34,7 +34,7 @@ func main() {
 	client := github.NewClient(tc)
 
 	user, _ := getUser(ctx, client, email)
-	fmt.Println("email:", *user.Email)
+	fmt.Printf("identity: %s / %s\n", user.GetName(), user.GetEmail())
 
 	searchAllRepos(ctx, client, user, token)
 }
@@ -61,8 +61,14 @@ func getUser(ctx context.Context, client *github.Client, email *string) (*github
 		fmt.Println(err)
 	}
 
-	e := emails[0].GetEmail()
-	user.Email = &e
+	for _, email := range emails {
+		if email.GetVisibility() == "private" {
+			continue
+		}
+
+		user.Email = email.Email
+		break
+	}
 
 	return user, err
 }
@@ -144,7 +150,7 @@ func handleAPILimit(response *github.Response) {
 }
 
 func fixRepository(ctx context.Context, repository *github.Repository, client *github.Client, user *github.User, token *string) error {
-	fmt.Printf("\n" + *repository.FullName)
+	fmt.Printf("\nREPO: %s\n", *repository.FullName)
 	if fixExists(ctx, repository, client) {
 		return nil
 	}
@@ -202,7 +208,7 @@ func cloneRepo(repository *github.Repository) (*git.Repository, *git.Worktree, e
 
 	gitRepo, err := git.PlainClone(".temp", false, &git.CloneOptions{
 		URL:      *repository.CloneURL,
-		Progress: os.Stdout,
+		Progress: nil,
 	})
 
 	workTree, err := gitRepo.Worktree()
