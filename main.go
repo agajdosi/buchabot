@@ -164,7 +164,7 @@ func fixRepository(ctx context.Context, repository *github.Repository, client *g
 	}
 
 	checkoutBranch(gitRepo, workTree)
-	unslave.Unslave()
+	unslave.Unslave(workTree)
 	commitChanges(gitRepo, workTree, user)
 	pushChanges(gitRepo, token)
 	createPR(ctx, client, repository, fork, gitRepo, token)
@@ -234,7 +234,11 @@ func checkoutBranch(gitRepo *git.Repository, workTree *git.Worktree) error {
 }
 
 func commitChanges(gitRepo *git.Repository, workTree *git.Worktree, user *github.User) error {
-	workTree.AddGlob(".")
+	/* 	err := workTree.AddGlob(".")
+	   	if err != nil {
+	   		fmt.Println("addglob error:", err)
+	   	} */
+
 	//should go to log: status, _ := workTree.Status()
 	commit, err := workTree.Commit("example go-git commit", &git.CommitOptions{
 		Author: &object.Signature{
@@ -244,9 +248,13 @@ func commitChanges(gitRepo *git.Repository, workTree *git.Worktree, user *github
 		},
 	})
 
+	if err != nil {
+		fmt.Println("error creating the comit", err)
+	}
+
 	_, err = gitRepo.CommitObject(commit)
 	if err != nil {
-		fmt.Println(err)
+		fmt.Println("error comiting the object:", err)
 	}
 
 	return err
