@@ -254,6 +254,7 @@ func commitChanges(gitRepo *git.Repository, workTree *git.Worktree, user *github
 
 func pushChanges(gitRepo *git.Repository, token *string) error {
 	opts := &git.PushOptions{
+		Force: true,
 		Auth: &http.BasicAuth{
 			Username: " ",
 			Password: *token,
