@@ -42,16 +42,13 @@ func main() {
 
 //SearchCodeHour searches for code in given one-hour time window, it handles all the paginations.
 func searchCodeHour(ctx context.Context, client *github.Client, user *github.User, token *string, searchTime *time.Time) {
+	fmt.Printf("=====  %v  =====\n", searchTime.Format(time.RFC3339))
 	opts := &github.SearchOptions{
 		ListOptions: github.ListOptions{PerPage: 100},
 	}
 
 	for {
-		resp, err := searchCodePageAndFix(ctx, client, opts, user, token, searchTime)
-		if err != nil {
-			fmt.Println(err)
-		}
-
+		resp := searchCodePageAndFix(ctx, client, opts, user, token, searchTime)
 		if resp.NextPage == 0 {
 			break
 		}
@@ -61,24 +58,29 @@ func searchCodeHour(ctx context.Context, client *github.Client, user *github.Use
 }
 
 //SearchCodePageAndFix searches for one page of code search results and on every result it calls a fix.
-func searchCodePageAndFix(ctx context.Context, client *github.Client, opts *github.SearchOptions, user *github.User, token *string, searchTime *time.Time) (*github.Response, error) {
+func searchCodePageAndFix(ctx context.Context, client *github.Client, opts *github.SearchOptions, user *github.User, token *string, searchTime *time.Time) *github.Response {
 	t := searchTime.Format(time.RFC3339)
 	search := fmt.Sprintf("slave sort:date created:%v", t[:13])
 
-	fmt.Printf("=====  %v  =====\n", t)
-
-	results, resp, err := client.Search.Code(ctx, search, opts)
-	handleAPILimit(resp)
-	if err != nil {
-		return resp, err
+	var results *github.CodeSearchResult
+	var resp *github.Response
+	for i := 1; i <= 5; i++ {
+		var err error
+		results, resp, err = client.Search.Code(ctx, search, opts)
+		handleAPILimit(resp)
+		if err != nil {
+			fmt.Printf("error searching for code '%v'\ntrying it again in 30 sec...\n", err)
+			time.Sleep(30 * time.Second)
+			continue
+		}
+		break
 	}
 
 	for _, result := range results.CodeResults {
-		fmt.Println(result.GetRepository().GetFullName())
-		//fixRepository(ctx, result.Repository, client, user, token)
+		fixRepository(ctx, result.Repository, client, user, token)
 	}
 
-	return resp, nil
+	return resp
 }
 
 func handleUserFlag(ctx context.Context, client *github.Client, email *string) *github.User {
@@ -149,6 +151,9 @@ func createPR(ctx context.Context, client *github.Client, repository *github.Rep
 	description := "please consider following changes"
 
 	gitHead, err := gitRepo.Head()
+	if err != nil {
+		fmt.Printf("error getting git HEAD reference: %v\n", err)
+	}
 	head := *fork.GetOwner().Login + ":" + gitHead.Name().Short()
 
 	base := repository.GetDefaultBranch()
@@ -164,23 +169,29 @@ func createPR(ctx context.Context, client *github.Client, repository *github.Rep
 		MaintainerCanModify: github.Bool(true),
 	}
 
-	_, resp, err := client.PullRequests.Create(ctx, *repository.Owner.Login, repository.GetName(), newPR)
-	if err != nil {
-		fmt.Println(err)
-	} else {
-		fmt.Println(" > PR successfully created")
+	var resp *github.Response
+	for i := 1; i <= 5; i++ {
+		_, resp, err = client.PullRequests.Create(ctx, *repository.Owner.Login, repository.GetName(), newPR)
+		handleAPILimit(resp)
+		if err != nil {
+			fmt.Printf("error creating the PR: %v, trying it again in 30 seconds...\n", err)
+			time.Sleep(30 * time.Second)
+			continue
+		}
+
+		fmt.Print(" > PR created!!!")
+		return nil
 	}
 
-	handleAPILimit(resp)
-	return nil
+	return err
 }
 
 func handleAPILimit(response *github.Response) {
 	if response.Rate.Remaining < 5 {
+		fmt.Println(" ---- API limit is near, waiting for it to reset:", response.Rate)
 		length := time.Until(response.Rate.Reset.Time) + time.Duration(time.Second*5)
 		time.Sleep(length)
 	}
-	return
 }
 
 func fixRepository(ctx context.Context, repository *github.Repository, client *github.Client, user *github.User, token *string) error {
@@ -189,11 +200,13 @@ func fixRepository(ctx context.Context, repository *github.Repository, client *g
 		return nil
 	}
 
-	fork, _ := forkRepo(ctx, repository, client)
+	fork, err := forkRepo(ctx, repository, client)
+	if err != nil {
+		return err
+	}
 
 	gitRepo, workTree, err := cloneRepo(fork)
 	if err != nil {
-		fmt.Println(err)
 		return err
 	}
 
@@ -210,8 +223,20 @@ func fixExists(ctx context.Context, repository *github.Repository, client *githu
 	opts := &github.PullRequestListOptions{
 		State: "all",
 	}
-	pullRequests, resp, _ := client.PullRequests.List(ctx, *repository.Owner.Login, *repository.Name, opts)
-	handleAPILimit(resp)
+
+	var pullRequests []*github.PullRequest
+	var resp *github.Response
+	for i := 1; i <= 5; i++ {
+		var err error
+		pullRequests, resp, err = client.PullRequests.List(ctx, *repository.Owner.Login, *repository.Name, opts)
+		handleAPILimit(resp)
+		if err != nil {
+			fmt.Printf("error listing PRs %v, trying it again in 30 seconds", err)
+			time.Sleep(30 * time.Second)
+			continue
+		}
+		break
+	}
 
 	for _, pullRequest := range pullRequests {
 		if strings.Contains(*pullRequest.Body, "removes master slave terminology") {
@@ -227,23 +252,50 @@ func forkRepo(ctx context.Context, repository *github.Repository, client *github
 	owner := *repository.Owner.Login
 	name := repository.GetName()
 
-	repo, resp, err := client.Repositories.CreateFork(ctx, owner, name, opts)
-	handleAPILimit(resp)
-	time.Sleep(time.Duration(time.Second * 10)) // it takes few seconds to GH to fork the repo
+	var repo *github.Repository
+	var resp *github.Response
+	var err error
+	for i := 1; i <= 5; i++ {
+		var err error
+		repo, resp, err = client.Repositories.CreateFork(ctx, owner, name, opts)
+		handleAPILimit(resp)
+		if err.Error() == "job scheduled on GitHub side; try again later" {
+			fmt.Println(" > repo forked")
+			return repo, nil
+		}
+		if err != nil {
+			fmt.Printf("error forking repository: %v, trying it again in 30 seconds...\n", err)
+			time.Sleep(30 * time.Second)
+			continue
+		}
+		fmt.Println(" > repo forked")
+		return repo, nil
+	}
 
 	return repo, err
 }
 
 func cloneRepo(repository *github.Repository) (*git.Repository, *git.Worktree, error) {
+	fmt.Println(" > cloning repo")
 	err := os.RemoveAll(".temp")
 	if err != nil {
 		fmt.Println("error deleting temp directory:", err)
 	}
 
-	gitRepo, err := git.PlainClone(".temp", false, &git.CloneOptions{
+	opts := &git.CloneOptions{
 		URL:      *repository.CloneURL,
-		Progress: nil,
-	})
+		Progress: os.Stdout,
+	}
+	var gitRepo *git.Repository
+	for i := 1; i <= 5; i++ {
+		gitRepo, err = git.PlainClone(".temp", false, opts)
+		if err != nil {
+			fmt.Printf("error cloning the repo: %v, trying it again in 5 seconds...\n", err)
+			time.Sleep(5 * time.Second)
+			continue
+		}
+		break
+	}
 
 	workTree, err := gitRepo.Worktree()
 	if err != nil {
@@ -284,14 +336,17 @@ func commitChanges(gitRepo *git.Repository, workTree *git.Worktree, user *github
 
 	if err != nil {
 		fmt.Println("error creating the comit", err)
+		return err
 	}
 
 	_, err = gitRepo.CommitObject(commit)
 	if err != nil {
 		fmt.Println("error comiting the object:", err)
+		return err
 	}
 
-	return err
+	fmt.Println(" > commited")
+	return nil
 }
 
 func pushChanges(gitRepo *git.Repository, token *string) error {
@@ -305,7 +360,9 @@ func pushChanges(gitRepo *git.Repository, token *string) error {
 	err := gitRepo.Push(opts)
 	if err != nil {
 		fmt.Println(err)
+		return err
 	}
 
-	return err
+	fmt.Println(" > pushed changes")
+	return nil
 }
