@@ -19,6 +19,7 @@ import (
 func main() {
 	token := flag.String("token", "", "GitHub Token which will be used to search code, fork repositories, place fixing commits and create PRs to original repositories.")
 	email := flag.String("email", "", "Sets email which will be used in the commits. Please set this if your email is not publicly visible and token does not have access to email:list on GitHub.")
+	timeFlag := flag.String("time", "", "Select from which time to start from which we should start searching code for master/slave. It goes from that moment to older code. Default: from now.")
 	flag.Parse()
 
 	if *token == "" {
@@ -36,7 +37,21 @@ func main() {
 	user, _ := getUser(ctx, client, email)
 	fmt.Printf("identity: %s / %s\n", user.GetName(), user.GetEmail())
 
-	searchAllRepos(ctx, client, user, token)
+	var searchTime time.Time
+	if *timeFlag == "" {
+		searchTime = time.Now().UTC()
+		searchTime = searchTime.Add(30 * time.Minute)
+		searchTime = searchTime.Round(time.Hour)
+	} else {
+		var err error
+		searchTime, err = time.Parse((time.RFC3339), *timeFlag)
+		if err != nil {
+			fmt.Println("error parsing the time flag:", err)
+			os.Exit(101)
+		}
+	}
+
+	searchAllRepos(ctx, client, user, token, &searchTime)
 }
 
 func getUser(ctx context.Context, client *github.Client, email *string) (*github.User, error) {
@@ -73,13 +88,13 @@ func getUser(ctx context.Context, client *github.Client, email *string) (*github
 	return user, err
 }
 
-func searchAllRepos(ctx context.Context, client *github.Client, user *github.User, token *string) {
+func searchAllRepos(ctx context.Context, client *github.Client, user *github.User, token *string, searchTime *time.Time) {
 	opts := &github.SearchOptions{
-		ListOptions: github.ListOptions{PerPage: 10},
+		ListOptions: github.ListOptions{PerPage: 100},
 	}
 
 	for {
-		resp, err := searchRepos(ctx, client, opts, user, token)
+		resp, err := searchRepos(ctx, client, opts, user, token, searchTime)
 		if err != nil {
 			fmt.Println(err)
 		}
@@ -92,19 +107,21 @@ func searchAllRepos(ctx context.Context, client *github.Client, user *github.Use
 	}
 }
 
-func searchRepos(ctx context.Context, client *github.Client, opts *github.SearchOptions, user *github.User, token *string) (*github.Response, error) {
-	//TODO: slowly search hour by hour to really get aaaaaall the results
-	//results, resp, err := client.Search.Code(ctx, "master created:2020-07-07T12", opts)
-	// OR BY SIZE!!!!
-	//results, resp, err := client.Search.Code(ctx, "master size:2000..3000", opts)
-	results, resp, err := client.Search.Code(ctx, "slave", opts)
+func searchRepos(ctx context.Context, client *github.Client, opts *github.SearchOptions, user *github.User, token *string, searchTime *time.Time) (*github.Response, error) {
+	t := searchTime.Format(time.RFC3339)
+	search := fmt.Sprintf("slave sort:date created:%v", t[:13])
+
+	fmt.Printf("=====  %v  =====\n", t)
+
+	results, resp, err := client.Search.Code(ctx, search, opts)
 	handleAPILimit(resp)
 	if err != nil {
 		return resp, err
 	}
 
 	for _, result := range results.CodeResults {
-		fixRepository(ctx, result.Repository, client, user, token)
+		fmt.Println(result.GetRepository().GetFullName())
+		//fixRepository(ctx, result.Repository, client, user, token)
 	}
 
 	return resp, nil
