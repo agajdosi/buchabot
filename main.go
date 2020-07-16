@@ -19,13 +19,9 @@ import (
 func main() {
 	token := flag.String("token", "", "GitHub Token which will be used to search code, fork repositories, place fixing commits and create PRs to original repositories.")
 	email := flag.String("email", "", "Sets email which will be used in the commits. Please set this if your email is not publicly visible and token does not have access to email:list on GitHub.")
-	timeFlag := flag.String("time", "", "Select from which time to start from which we should start searching code for master/slave. It goes from that moment to older code. Default: from now.")
+	startTime := flag.String("time", "", "Select from which time to start from which we should start searching code for master/slave. It goes from that moment to older code. Default: from now.")
 	flag.Parse()
-
-	if *token == "" {
-		fmt.Println("Token flag is required.")
-		os.Exit(100)
-	}
+	handleTokenFlag(token)
 
 	ctx := context.Background()
 	ts := oauth2.StaticTokenSource(
@@ -34,26 +30,13 @@ func main() {
 	tc := oauth2.NewClient(ctx, ts)
 	client := github.NewClient(tc)
 
-	user, _ := getUser(ctx, client, email)
+	timeToSearch := handleTimeFlag(startTime)
+	user := handleUserFlag(ctx, client, email)
 	fmt.Printf("identity: %s / %s\n", user.GetName(), user.GetEmail())
 
-	var searchTime time.Time
-	if *timeFlag == "" {
-		searchTime = time.Now().UTC()
-		searchTime = searchTime.Add(30 * time.Minute)
-		searchTime = searchTime.Round(time.Hour)
-	} else {
-		var err error
-		searchTime, err = time.Parse((time.RFC3339), *timeFlag)
-		if err != nil {
-			fmt.Println("error parsing the time flag:", err)
-			os.Exit(101)
-		}
-	}
-
 	for {
-		searchCodeHour(ctx, client, user, token, &searchTime)
-		searchTime = searchTime.Add(-1 * time.Hour)
+		searchCodeHour(ctx, client, user, token, &timeToSearch)
+		timeToSearch = timeToSearch.Add(-1 * time.Hour)
 	}
 }
 
@@ -98,26 +81,29 @@ func searchCodePageAndFix(ctx context.Context, client *github.Client, opts *gith
 	return resp, nil
 }
 
-func getUser(ctx context.Context, client *github.Client, email *string) (*github.User, error) {
+func handleUserFlag(ctx context.Context, client *github.Client, email *string) *github.User {
 	user, resp, err := client.Users.Get(ctx, "")
 	handleAPILimit(resp)
 	if err != nil {
-		fmt.Println(err)
+		fmt.Println("error getting the user info:", err)
+		os.Exit(103)
 	}
 
 	if *email != "" {
 		user.Email = email
-		return user, err
+		return user
 	}
 
 	if user.GetEmail() != "" {
-		return user, err
+		return user
 	}
 
 	emails, resp, err := client.Users.ListEmails(ctx, &github.ListOptions{})
 	handleAPILimit(resp)
 	if err != nil {
-		fmt.Println(err)
+		fmt.Println("error getting the email for the user:", err)
+		fmt.Println("if this persist, please provide the email as flag --email")
+		os.Exit(104)
 	}
 
 	for _, email := range emails {
@@ -129,7 +115,33 @@ func getUser(ctx context.Context, client *github.Client, email *string) (*github
 		break
 	}
 
-	return user, err
+	return user
+}
+
+func handleTimeFlag(startTime *string) time.Time {
+	if *startTime == "" {
+		timeToSearch := time.Now().UTC()
+		timeToSearch = timeToSearch.Add(30 * time.Minute)
+		timeToSearch = timeToSearch.Round(time.Hour)
+		return timeToSearch
+	}
+
+	timeToSearch, err := time.Parse((time.RFC3339), *startTime)
+	if err != nil {
+		fmt.Println("error parsing the time flag:", err)
+		os.Exit(101)
+	}
+
+	return timeToSearch
+}
+
+func handleTokenFlag(token *string) {
+	if *token == "" {
+		fmt.Println("Token flag is required.")
+		os.Exit(100)
+	}
+
+	return
 }
 
 func createPR(ctx context.Context, client *github.Client, repository *github.Repository, fork *github.Repository, gitRepo *git.Repository, token *string) error {
