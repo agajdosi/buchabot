@@ -51,7 +51,51 @@ func main() {
 		}
 	}
 
-	searchAllRepos(ctx, client, user, token, &searchTime)
+	for {
+		searchCodeHour(ctx, client, user, token, &searchTime)
+		searchTime = searchTime.Add(-1 * time.Hour)
+	}
+}
+
+//SearchCodeHour searches for code in given one-hour time window, it handles all the paginations.
+func searchCodeHour(ctx context.Context, client *github.Client, user *github.User, token *string, searchTime *time.Time) {
+	opts := &github.SearchOptions{
+		ListOptions: github.ListOptions{PerPage: 100},
+	}
+
+	for {
+		resp, err := searchCodePageAndFix(ctx, client, opts, user, token, searchTime)
+		if err != nil {
+			fmt.Println(err)
+		}
+
+		if resp.NextPage == 0 {
+			break
+		}
+
+		opts.Page = resp.NextPage
+	}
+}
+
+//SearchCodePageAndFix searches for one page of code search results and on every result it calls a fix.
+func searchCodePageAndFix(ctx context.Context, client *github.Client, opts *github.SearchOptions, user *github.User, token *string, searchTime *time.Time) (*github.Response, error) {
+	t := searchTime.Format(time.RFC3339)
+	search := fmt.Sprintf("slave sort:date created:%v", t[:13])
+
+	fmt.Printf("=====  %v  =====\n", t)
+
+	results, resp, err := client.Search.Code(ctx, search, opts)
+	handleAPILimit(resp)
+	if err != nil {
+		return resp, err
+	}
+
+	for _, result := range results.CodeResults {
+		fmt.Println(result.GetRepository().GetFullName())
+		//fixRepository(ctx, result.Repository, client, user, token)
+	}
+
+	return resp, nil
 }
 
 func getUser(ctx context.Context, client *github.Client, email *string) (*github.User, error) {
@@ -86,45 +130,6 @@ func getUser(ctx context.Context, client *github.Client, email *string) (*github
 	}
 
 	return user, err
-}
-
-func searchAllRepos(ctx context.Context, client *github.Client, user *github.User, token *string, searchTime *time.Time) {
-	opts := &github.SearchOptions{
-		ListOptions: github.ListOptions{PerPage: 100},
-	}
-
-	for {
-		resp, err := searchRepos(ctx, client, opts, user, token, searchTime)
-		if err != nil {
-			fmt.Println(err)
-		}
-
-		if resp.NextPage == 0 {
-			break
-		}
-
-		opts.Page = resp.NextPage
-	}
-}
-
-func searchRepos(ctx context.Context, client *github.Client, opts *github.SearchOptions, user *github.User, token *string, searchTime *time.Time) (*github.Response, error) {
-	t := searchTime.Format(time.RFC3339)
-	search := fmt.Sprintf("slave sort:date created:%v", t[:13])
-
-	fmt.Printf("=====  %v  =====\n", t)
-
-	results, resp, err := client.Search.Code(ctx, search, opts)
-	handleAPILimit(resp)
-	if err != nil {
-		return resp, err
-	}
-
-	for _, result := range results.CodeResults {
-		fmt.Println(result.GetRepository().GetFullName())
-		//fixRepository(ctx, result.Repository, client, user, token)
-	}
-
-	return resp, nil
 }
 
 func createPR(ctx context.Context, client *github.Client, repository *github.Repository, fork *github.Repository, gitRepo *git.Repository, token *string) error {
