@@ -239,7 +239,9 @@ func fixExists(ctx context.Context, repository *github.Repository, client *githu
 	}
 
 	for _, pullRequest := range pullRequests {
-		if strings.Contains(*pullRequest.Body, "Removal of master slave terminology") {
+		//searches in additional text of the PR
+		if strings.Contains(*pullRequest.Body, "which can be associated to slavery") {
+			fmt.Println(" > fix exists!")
 			return true
 		}
 	}
