@@ -3,6 +3,7 @@ package unslave
 import (
 	"fmt"
 	"io/ioutil"
+	"math/rand"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -38,16 +39,16 @@ type walker struct {
 
 func (w *walker) replace(text string) string {
 	if text == "slave" {
-		return "politician"
+		return "subordinate"
 	}
 	if text == "Slave" {
-		return "Politician"
+		return "Subordinate"
 	}
 	if text == "master" {
-		return "oligarch"
+		return "main"
 	}
 	if text == "Master" {
-		return "Oligarch"
+		return "Main"
 	}
 
 	return text
@@ -102,4 +103,20 @@ func (w *walker) removeMasterSlave(path string, info os.FileInfo, err error) err
 	}
 
 	return err
+}
+
+//GeneratePRTitle generates title for the PR which removes master/slave terminology
+func GeneratePRTitle() string {
+	words := [][]string{
+		{"Removal of", "Removing the", "Changing the", "Discarding the", "Discard", "Migrate from", "Migrating from", "Get away from"},
+		{"master/slave", "master-slave", "master and slave"},
+		{"terminology", "words", "jargon", "lingo", "vocabulary", "phrasing", "language"},
+	}
+
+	return fmt.Sprintf("%v %v %v", words[0][rand.Intn(len(words[0]))], words[1][rand.Intn(len(words[1]))], words[2][rand.Intn(len(words[2]))])
+}
+
+//GeneratePRDescription generates description for the PR which removes master/slave terminology
+func GeneratePRDescription() string {
+	return "For diversity reasons, it would be nice to try to avoid 'master' and 'slave' terminology in this repository which can be associated to slavery. The master-slave terminology could be problematic for people in several countries which has the history of slavery like Romania, USA and many others. Thank you for considering the proposal. Let me know if any changes in the PR are needed, I would be happy to implement them."
 }

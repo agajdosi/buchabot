@@ -148,8 +148,8 @@ func handleTokenFlag(token *string) {
 
 func createPR(ctx context.Context, client *github.Client, repository *github.Repository, fork *github.Repository, gitRepo *git.Repository, token *string) error {
 	//maybe this should be in global config
-	title := "Removal of master/slave terminology"
-	description := "For diversity reasons, it would be nice to try to avoid 'master' and 'slave' terminology in this repository which can be associated to slavery. The master-slave terminology could be problematic for people in several countries which has the history of slavery like Romania, USA and many others. Thank you for considering the proposal. Let me know if any changes in the PR are needed, I would be happy to implement them."
+	title := unslave.GeneratePRTitle()
+	description := unslave.GeneratePRDescription()
 	gitHead, err := gitRepo.Head()
 	if err != nil {
 		fmt.Printf("error getting git HEAD reference: %v\n", err)
@@ -328,7 +328,7 @@ func checkoutBranch(gitRepo *git.Repository, workTree *git.Worktree) error {
 
 func commitChanges(gitRepo *git.Repository, workTree *git.Worktree, user *github.User) error {
 	//should go to log: status, _ := workTree.Status()
-	commit, err := workTree.Commit("Removal of master/slave terminology", &git.CommitOptions{
+	commit, err := workTree.Commit(unslave.GeneratePRTitle(), &git.CommitOptions{
 		Author: &object.Signature{
 			Name:  user.GetName(),
 			Email: user.GetEmail(),
