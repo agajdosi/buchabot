@@ -66,6 +66,17 @@ func (w *walker) removeMasterSlave(path string, info os.FileInfo, err error) err
 		return nil
 	}
 
+	skip := map[string]bool{
+		".jpg":  true,
+		".png":  true,
+		".db":   true,
+		".html": true,
+		".xml":  true,
+	}
+	if skip[filepath.Ext(info.Name())] {
+		return nil
+	}
+
 	data, err := ioutil.ReadFile(path)
 	if err != nil {
 		return fmt.Errorf(" >> error reading the file: %v", err)
