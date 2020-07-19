@@ -5,6 +5,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/go-git/go-git/v5"
@@ -17,6 +18,7 @@ func Unslave(workTree *git.Worktree) error {
 
 	w := &walker{
 		workTree: workTree,
+		exp:      regexp.MustCompile(`([\w-]*\.\w{2,4}\/[ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789\-\._~:/?#\[\]@!$&'()*+,;=]*)*[Ss]lave`),
 	}
 
 	err := filepath.Walk(".temp", w.removeMasterSlave)
@@ -25,11 +27,30 @@ func Unslave(workTree *git.Worktree) error {
 	}
 
 	fmt.Println(" > unslaved")
+
 	return nil
 }
 
 type walker struct {
 	workTree *git.Worktree
+	exp      *regexp.Regexp
+}
+
+func (w *walker) replace(text string) string {
+	if text == "slave" {
+		return "politician"
+	}
+	if text == "Slave" {
+		return "Politician"
+	}
+	if text == "master" {
+		return "oligarch"
+	}
+	if text == "Master" {
+		return "Oligarch"
+	}
+
+	return text
 }
 
 func (w *walker) removeMasterSlave(path string, info os.FileInfo, err error) error {
@@ -55,8 +76,7 @@ func (w *walker) removeMasterSlave(path string, info os.FileInfo, err error) err
 		return nil
 	}
 
-	text = strings.Replace(text, "master", "oligarch", -1)
-	text = strings.Replace(text, "slave", "politician", -1)
+	text = w.exp.ReplaceAllStringFunc(text, w.replace)
 
 	err = ioutil.WriteFile(path, []byte(text), 0644)
 	if err != nil {

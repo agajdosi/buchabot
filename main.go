@@ -205,6 +205,11 @@ func fixRepository(ctx context.Context, repository *github.Repository, client *g
 		return err
 	}
 
+	if *fork.Size > 200000 {
+		fmt.Printf(" > repository too big (%vkb), skipping...\n", *fork.Size)
+		return nil
+	}
+
 	gitRepo, workTree, err := cloneRepo(fork)
 	if err != nil {
 		return err
