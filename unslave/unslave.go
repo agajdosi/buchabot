@@ -19,7 +19,7 @@ func Unslave(workTree *git.Worktree) error {
 
 	w := &walker{
 		workTree: workTree,
-		exp:      regexp.MustCompile(`([\w-]*\.\w{2,4}\/[ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789\-\._~:/?#\[\]@!$&'()*+,;=]*)*[Ss]lave`),
+		exp:      regexp.MustCompile(`([\w-]*\.\w{2,4}\/[ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789\-\._~:/?#\[\]@!$&'()*+,;=]*)*([Ss]lave|[Mm]aster)`),
 	}
 
 	err := filepath.Walk(".temp", w.removeMasterSlave)
