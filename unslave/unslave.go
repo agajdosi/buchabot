@@ -67,14 +67,12 @@ func (w *walker) removeMasterSlave(path string, info os.FileInfo, err error) err
 		return nil
 	}
 
-	skip := map[string]bool{
-		".jpg":  true,
-		".png":  true,
-		".db":   true,
-		".html": true,
-		".xml":  true,
+	edit := map[string]bool{
+		".go":  true,
+		".py":  true,
+		".py3": true,
 	}
-	if skip[filepath.Ext(info.Name())] {
+	if edit[filepath.Ext(info.Name())] != true {
 		return nil
 	}
 

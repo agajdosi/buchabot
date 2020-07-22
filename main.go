@@ -35,8 +35,27 @@ func main() {
 	fmt.Printf("identity: %s / %s\n", user.GetName(), user.GetEmail())
 
 	for {
-		searchCodeHour(ctx, client, user, token, &timeToSearch)
-		timeToSearch = timeToSearch.Add(-1 * time.Hour)
+		//searchCodeHour(ctx, client, user, token, &timeToSearch)
+		searchCodeDay(ctx, client, user, token, &timeToSearch)
+		timeToSearch = timeToSearch.Add(-24 * time.Hour)
+	}
+}
+
+//SearchCodeDay searches for code in given one-hour time window, it handles all the paginations.
+func searchCodeDay(ctx context.Context, client *github.Client, user *github.User, token *string, searchTime *time.Time) {
+	fmt.Printf("=====  %v  =====\n", searchTime.Format(time.RFC3339))
+	opts := &github.SearchOptions{
+		ListOptions: github.ListOptions{PerPage: 100},
+	}
+
+	for {
+		t := searchTime.Format(time.RFC3339)[:10]
+		resp := searchCodePageAndFix(ctx, client, opts, user, token, t)
+		if resp.NextPage == 0 {
+			break
+		}
+
+		opts.Page = resp.NextPage
 	}
 }
 
@@ -48,7 +67,8 @@ func searchCodeHour(ctx context.Context, client *github.Client, user *github.Use
 	}
 
 	for {
-		resp := searchCodePageAndFix(ctx, client, opts, user, token, searchTime)
+		t := searchTime.Format(time.RFC3339)[:13]
+		resp := searchCodePageAndFix(ctx, client, opts, user, token, t)
 		if resp.NextPage == 0 {
 			break
 		}
@@ -58,9 +78,8 @@ func searchCodeHour(ctx context.Context, client *github.Client, user *github.Use
 }
 
 //SearchCodePageAndFix searches for one page of code search results and on every result it calls a fix.
-func searchCodePageAndFix(ctx context.Context, client *github.Client, opts *github.SearchOptions, user *github.User, token *string, searchTime *time.Time) *github.Response {
-	t := searchTime.Format(time.RFC3339)
-	search := fmt.Sprintf("slave sort:date created:%v", t[:13])
+func searchCodePageAndFix(ctx context.Context, client *github.Client, opts *github.SearchOptions, user *github.User, token *string, searchTime string) *github.Response {
+	search := fmt.Sprintf("slave sort:date created:%v language:python language:go", searchTime)
 
 	var results *github.CodeSearchResult
 	var resp *github.Response
