@@ -173,7 +173,7 @@ func createPR(ctx context.Context, client *github.Client, repository *github.Rep
 	if err != nil {
 		fmt.Printf("error getting git HEAD reference: %v\n", err)
 	}
-	head := *fork.GetOwner().Login + ":" + gitHead.Name().Short()
+	head := fork.GetOwner().GetLogin() + ":" + gitHead.Name().Short()
 
 	base := repository.GetDefaultBranch()
 	if base == "" {
@@ -264,7 +264,7 @@ func fixExists(ctx context.Context, repository *github.Repository, client *githu
 
 	for _, pullRequest := range pullRequests {
 		//searches in additional text of the PR
-		if strings.Contains(*pullRequest.Body, "which can be associated to slavery") {
+		if strings.Contains(pullRequest.GetBody(), "which can be associated to slavery") {
 			fmt.Println(" > fix exists!")
 			return true
 		}
